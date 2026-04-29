@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="ar">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>جهاز بصمة - Fingerprint Collector</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        .header {
+            text-align: center;
+            color: white;
+            margin-bottom: 30px;
+        }
+        
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+        }
+        
+        .header p {
+            font-size: 1.1rem;
+            opacity: 0.9;
+        }
+        
+        .card {
+            background: white;
+            border-radius: 15px;
+            padding: 25px;
+            margin-bottom: 20px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.1);
+        }
+        
+        .card h2 {
+            color: #667eea;
+            margin-bottom: 20px;
+            border-bottom: 2px solid #667eea;
+            padding-bottom: 10px;
+        }
+        
+        .info-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 15px;
+        }
+        
+        .info-item {
+            background: #f8f9fa;
+            padding: 12px;
+            border-radius: 8px;
+            border-left: 4px solid #667eea;
+        }
+        
+        .info-label {
+            font-weight: bold;
+            color: #555;
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            margin-bottom: 5px;
+        }
+        
+        .info-value {
+            color: #333;
+            font-size: 0.95rem;
+            word-break: break-all;
+        }
+        
+        .fingerprint-box {
+            background: #f0f0f0;
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+            margin-top: 20px;
+        }
+        
+        .fingerprint-code {
+            font-family: monospace;
+            font-size: 1.2rem;
+            background: #333;
+            color: #0f0;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 10px 0;
+            word-break: break-all;
+        }
+        
+        .status {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: #28a745;
+            color: white;
+            padding: 10px 20px;
+            border-radius: 25px;
+            font-size: 0.9rem;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+        }
+        
+        .status.error {
+            background: #dc3545;
+        }
+        
+        button {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin-top: 15px;
+            font-size: 1rem;
+        }
+        
+        button:hover {
+            background: #5a67d8;
+        }
+        
+        @media (max-width: 768px) {
+            .header h1 { font-size: 1.8rem; }
+            .info-grid { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🕵️ جهاز البصمة الرقمية</h1>
+            <p>هذه الصفحة تجمع بيانات جهازك لمعرفة ما إذا كانت تتغير أم لا</p>
+        </div>
+        
+        <div class="card">
+            <h2>📊 بيانات جهازك</h2>
+            <div class="info-grid" id="infoGrid">
+                <!-- ستمتلئ البيانات بواسطة JavaScript -->
+                <div class="info-item">
+                    <div class="info-label">جاري التحميل...</div>
+                    <div class="info-value">يرجى الانتظار</div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="card">
+            <h2>🔐 البصمة الرقمية الفريدة</h2>
+            <div class="fingerprint-box">
+                <div class="info-label">معرف الجلسة الحالي</div>
+                <div class="fingerprint-code" id="sessionId">جاري التوليد...</div>
+                <div class="info-label">البصمة الفريدة (بناءً على Canvas + WebGL + Fonts)</div>
+                <div class="fingerprint-code" id="uniqueFingerprint">جاري الحساب...</div>
+                <button onclick="refreshData()">🔄 تحديث البيانات</button>
+                <button onclick="copyFingerprint()">📋 نسخ البصمة</button>
+            </div>
+        </div>
+        
+        <div class="card">
+            <h2>📈 تغييرات البصمة</h2>
+            <div id="changeHistory">
+                <p>سيتم عرض التغييرات عند تحديث الصفحة أو فتحها من متصفح/جهاز آخر</p>
+            </div>
+        </div>
+    </div>
+    
+    <div class="status" id="status">✅ جاهز</div>
+    
+    <script>
+        let sessionId = getOrCreateSessionId();
+        let previousFingerprints = JSON.parse(localStorage.getItem('fingerprintHistory') || '[]');
+        
+        function getOrCreateSessionId() {
+            let id = localStorage.getItem('sessionId');
+            if (!id) {
+                id = 'session_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+                localStorage.setItem('sessionId', id);
+            }
+            document.getElementById('sessionId').innerText = id;
+            return id;
+        }
+        
+        async function collectFingerprint() {
+            const fingerprint = {
+                session_id: sessionId,
+                timestamp: new Date().toISOString(),
+                
+                // بيانات الشاشة
+                screen_width: screen.width,
+                screen_height: screen.height,
+                color_depth: screen.colorDepth,
+                pixel_ratio: window.devicePixelRatio,
+                
+                // بيانات المتصفح
+                language: navigator.language,
+                languages: navigator.languages,
+                platform: navigator.platform,
+                user_agent: navigator.userAgent,
+                hardware_concurrency: navigator.hardwareConcurrency || 'غير متاح',
+                device_memory: navigator.deviceMemory || 'غير متاح',
+                
+                // بيانات المنطقة
+                timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+                timezone_offset: new Date().getTimezoneOffset(),
+                
+                // إعدادات الخصوصية
+                do_not_track: navigator.doNotTrack || 'غير مضبوط',
+                cookies_enabled: navigator.cookieEnabled,
+                
+                // بصمة Canvas
+                canvas_hash: await getCanvasFingerprint(),
+                
+                // بصمة WebGL
+                ...await getWebGLFingerprint(),
+                
+                // بصمة الخطوط
+                fonts_hash: await getFontsFingerprint(),
+                
+                // بصمة الصوت
+                audio_hash: await getAudioFingerprint(),
+                
+                // التخزين المحلي
+                local_storage: typeof(Storage) !== 'undefined',
+                session_storage: typeof(sessionStorage) !== 'undefined'
+            };
+            
+            return fingerprint;
+        }
+        
+        function getCanvasFingerprint() {
+            return new Promise((resolve) => {
+                const canvas = document.createElement('canvas');
+                canvas.width = 200;
+                canvas.height = 50;
+                const ctx = canvas.getContext('2d');
+                
+                ctx.fillStyle = '#f60';
+                ctx.fillRect(0, 0, 100, 50);
+                ctx.fillStyle = '#069';
+                ctx.fillRect(100, 0, 100, 50);
+                ctx.font = '14px Arial';
+                ctx.fillStyle = '#fff';
+                ctx.fillText('Fingerprint', 50, 30);
+                
+                const hash = crypto.subtle.digest('SHA-256', canvas.toDataURL().slice(0, 1000));
+                hash.then(h => {
+                    const hashArray = Array.from(new Uint8Array(h));
+                    const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+                    resolve(hashHex.slice(0, 32));
+                }).catch(() => resolve('canvas_not_supported'));
+            });
+        }
+        
+        function getWebGLFingerprint() {
+            return new Promise((resolve) => {
+                const canvas = document.createElement('canvas');
+                const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+                
+                if (!gl) {
+                    resolve({ webgl_vendor: 'غير مدعوم', webgl_renderer: 'غير مدعوم' });
+                    return;
+                }
+                
+                const debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
+                if (debugInfo) {
+                    resolve({
+                        webgl_vendor: gl.getParameter(debugInfo.UNMASKED_VENDOR_WEBGL),
+                        webgl_renderer: gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL)
+                    });
+                } else {
+                    resolve({ webgl_vendor: 'غير متاح', webgl_renderer: 'غير متاح' });
+                }
+            });
+        }
+        
+        async function getFontsFingerprint() {
+            const fonts = ['Arial', 'Verdana', 'Times New Roman', 'Courier New', 'Georgia', 'Comic Sans MS'];
+            const testString = 'mmmmmmmmmmlli';
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            let fingerprint = '';
+            
+            for (const font of fonts) {
+                ctx.font = `20px ${font}`;
+                const metrics = ctx.measureText(testString);
+                fingerprint += `${font}:${metrics.width}|`;
+            }
+            
+            const encoder = new TextEncoder();
+            const data = encoder.encode(fingerprint);
+            const hash = await crypto.subtle.digest('SHA-256', data);
+            const hashArray = Array.from(new Uint8Array(hash));
+            return hashArray.map(b => b.toString(16).padStart(2, '0')).join('').slice(0, 32);
+        }
+        
+        async function getAudioFingerprint() {
+            try {
+                const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                const oscillator = audioContext.createOscillator();
+                const analyser = audioContext.createAnalyser();
+                oscillator.connect(analyser);
+                analyser.connect(audioContext.destination);
+                
+                oscillator.type = 'sine';
+                oscillator.frequency.value = 440;
+                oscillator.start();
+                
+                const dataArray = new Uint8Array(analyser.frequencyBinCount);
+                analyser.getByteFrequencyData(dataArray);
+                oscillator.stop();
+                audioContext.close();
+                
+                const hash = await crypto.subtle.digest('SHA-256', dataArray);
+                const hashArray = Array.from(new Uint8Array(hash));
+                return hashArray.map(b => b.toString(16).padStart(2, '0')).join('').slice(0, 16);
+            } catch(e) {
+                return 'audio_not_supported';
+            }
+        }
+        
+        async function sendToServer(data) {
+            try {
+                const response = await fetch('/collect', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+                const result = await response.json();
+                return result;
+            } catch(e) {
+                console.error('خطأ في الإرسال:', e);
+                return null;
+            }
+        }
+        
+        async function refreshData() {
+            const statusDiv = document.getElementById('status');
+            statusDiv.textContent = '⏳ جاري جمع البيانات...';
+            statusDiv.className = 'status';
+            
+            const fingerprint = await collectFingerprint();
+            displayData(fingerprint);
+            
+            // إرسال إلى الخادم
+            const result = await sendToServer(fingerprint);
+            
+            if (result && result.status === 'success') {
+                statusDiv.textContent = `✅ تم الحفظ | البصمة: ${result.unique_fingerprint}`;
+                statusDiv.className = 'status';
+                
+                // حفظ في التاريخ المحلي
+                previousFingerprints.unshift({
+                    fingerprint: result.unique_fingerprint,
+                    timestamp: new Date().toISOString(),
+                    fullData: fingerprint
+                });
+                if (previousFingerprints.length > 10) previousFingerprints.pop();
+                localStorage.setItem('fingerprintHistory', JSON.stringify(previousFingerprints));
+                
+                checkChanges(result.unique_fingerprint);
+            } else {
+                statusDiv.textContent = '❌ فشل في الحفظ على الخادم';
+                statusDiv.className = 'status error';
+            }
+        }
+        
+        function displayData(data) {
+            const grid = document.getElementById('infoGrid');
+            const items = [
+                { label: 'نظام التشغيل', value: data.platform },
+                { label: 'المتصفح', value: data.user_agent.split(' ').slice(0,3).join(' ') },
+                { label: 'دقة الشاشة', value: `${data.screen_width} x ${data.screen_height}` },
+                { label: 'عمق الألوان', value: `${data.color_depth} بت` },
+                { label: 'نسبة البكسل', value: data.pixel_ratio },
+                { label: 'اللغة', value: data.language },
+                { label: 'المنطقة الزمنية', value: data.timezone },
+                { label: 'عدد الأنوية', value: data.hardware_concurrency },
+                { label: 'الذاكرة المتاحة', value: data.device_memory !== 'غير متاح' ? `${data.device_memory} جيجابايت` : 'غير متاح' },
+                { label: 'Canvas Hash', value: data.canvas_hash.slice(0, 20) + '...' },
+                { label: 'WebGL Vendor', value: data.webgl_vendor },
+                { label: 'WebGL Renderer', value: data.webgl_renderer },
+                { label: 'بصمة الخطوط', value: data.fonts_hash.slice(0, 20) + '...' }
+            ];
+            
+            grid.innerHTML = items.map(item => `
+                <div class="info-item">
+                    <div class="info-label">${item.label}</div>
+                    <div class="info-value">${item.value}</div>
+                </div>
+            `).join('');
+            
+            document.getElementById('uniqueFingerprint').innerText = 
+                `${data.canvas_hash.slice(0, 8)}-${data.webgl_vendor?.slice(0, 8) || 'xxxx'}-${data.fonts_hash.slice(0, 8)}`;
+        }
+        
+        function checkChanges(newFingerprint) {
+            const historyDiv = document.getElementById('changeHistory');
+            if (previousFingerprints.length > 1) {
+                const lastFingerprint = previousFingerprints[1].fingerprint;
+                if (lastFingerprint !== newFingerprint) {
+                    historyDiv.innerHTML = `
+                        <div style="background:#ffeaa7; padding:15px; border-radius:10px;">
+                            <strong>⚠️ تغيرت البصمة!</strong><br>
+                            البصمة السابقة: ${lastFingerprint}<br>
+                            البصمة الحالية: ${newFingerprint}<br>
+                            <small>الوقت: ${new Date().toLocaleString()}</small>
+                        </div>
+                        ${historyDiv.innerHTML}
+                    `;
+                } else {
+                    historyDiv.innerHTML = `
+                        <div style="background:#d4edda; padding:15px; border-radius:10px;">
+                            <strong>✅ البصمة ثابتة</strong><br>
+                            لم تتغير البصمة عن الجلسة السابقة
+                        </div>
+                        ${historyDiv.innerHTML}
+                    `;
+                }
+            }
+        }
+        
+        function copyFingerprint() {
+            const fp = document.getElementById('uniqueFingerprint').innerText;
+            navigator.clipboard.writeText(fp);
+            const status = document.getElementById('status');
+            status.textContent = '📋 تم نسخ البصمة';
+            setTimeout(() => { status.textContent = '✅ جاهز'; }, 2000);
+        }
+        
+        // بدء التجميع عند تحميل الصفحة
+        refreshData();
+        
+        // محاولة إعادة التجميع كل 30 ثانية (لاختبار التغيرات)
+        setInterval(refreshData, 30000);
+    </script>
+</body>
+</html>
